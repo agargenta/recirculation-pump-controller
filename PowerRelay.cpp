@@ -6,30 +6,34 @@ PowerRelay::PowerRelay(byte pin) {
 
 void PowerRelay::begin() {
   pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
 }
 
 boolean PowerRelay::isOn() {
-  return currentOnTimestamp != 0;
+  return onState;
 }
 
 void PowerRelay::on() {
   if (!isOn()) {
     digitalWrite(pin, HIGH);
-    currentOnTimestamp = millis();
+    lastToggleTimestamp = millis();
     totalOnCount++;
+    onState = true;
   }
 }
 
 void PowerRelay::off() {
   if (isOn()) {
     digitalWrite(pin, LOW);
-    totalOnDuration += getCurrentOnDuration();
-    currentOnTimestamp = 0;
+    unsigned long now = millis();
+    totalOnDuration += now - lastToggleTimestamp;
+    lastToggleTimestamp = now;
+    onState = false;
   }
 }
 
-unsigned long PowerRelay::getCurrentOnDuration() {
-  return isOn() ? millis() - currentOnTimestamp : 0;
+unsigned long PowerRelay::getLastToggleTimestamp() {
+  return lastToggleTimestamp;
 }
 
 unsigned int PowerRelay::getTotalOnCount() {
@@ -37,5 +41,5 @@ unsigned int PowerRelay::getTotalOnCount() {
 }
 
 unsigned long PowerRelay::getTotalOnDuration() {
-  return totalOnDuration + getCurrentOnDuration();
+  return totalOnDuration;
 }

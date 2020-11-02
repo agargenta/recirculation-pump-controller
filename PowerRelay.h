@@ -7,9 +7,10 @@ class PowerRelay {
   
   private:
     byte pin;
+    boolean onState = false;
     unsigned int totalOnCount = 0;
     unsigned long totalOnDuration = 0;
-    unsigned long currentOnTimestamp = 0;
+    unsigned long lastToggleTimestamp = 0;
 
   public:
     PowerRelay(byte pin);
@@ -19,7 +20,7 @@ class PowerRelay {
     void off();
     unsigned int getTotalOnCount();
     unsigned long getTotalOnDuration();
-    unsigned long getCurrentOnDuration();
+    unsigned long getLastToggleTimestamp();
 };
 
 #endif
