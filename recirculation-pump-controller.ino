@@ -17,8 +17,8 @@
 #define OLED_RESET                       4
 #define MAX_TEMP_DIFF                    6
 #define MIN_TEMP_DIFF                    3
-#define MIN_PUMP_OFF_DURATION       180000 // 3 minutes
-#define MIN_PUMP_ON_DURATION        300000 // 5 minutes
+#define MIN_PUMP_OFF_DURATION       180000 //  3 minutes
+#define MIN_PUMP_ON_DURATION        300000 //  5 minutes
 #define MAX_PUMP_ON_DURATION        600000 // 10 minutes
 
 TemperatureSensor outletTemperatureSensor(OUTLET_TEMPERATURE_SENSOR_PIN);
@@ -28,6 +28,7 @@ PowerRelay pumpPowerRelay(PUMP_POWER_RELAY_PIN);
 Adafruit_SSD1306 display(OLED_SCREEN_WIDTH, OLED_SCREEN_HEIGHT, &Wire, OLED_RESET);
 unsigned long lastSensorsReadingTime;
 unsigned int missedTempTargetCount = 0;
+unsigned long totalWarmPulses = 0;
 
 void flowSensorIsr() {
   flowSensor.onPulse();
@@ -56,28 +57,41 @@ void setup() {
 }
 
 void loop() {
-  unsigned long now = millis();
-  unsigned long timeSinceLastReading = now - lastSensorsReadingTime;
+  const unsigned long now = millis();
+  const unsigned long timeSinceLastReading = now - lastSensorsReadingTime;
   if (timeSinceLastReading >= (1000 / SENSORS_READING_FREQUENCY_HZ)) {
     lastSensorsReadingTime = now;
    
     // read temperature sensors
-    float outletTemperature = outletTemperatureSensor.readTemperature();
-    float returnTemperature = returnTemperatureSensor.readTemperature();
+    const float outletTemperature = outletTemperatureSensor.readTemperature();
+    const float returnTemperature = returnTemperatureSensor.readTemperature();
     // TODO: check for temperature errors
-    float tempDiff = outletTemperature - returnTemperature;
+    const float tempDiff = outletTemperature - returnTemperature;
     
     // service flow sensor
-    byte pulses = flowSensor.service(timeSinceLastReading);
+    const byte pulses = flowSensor.service(timeSinceLastReading);
 
-    unsigned long timeSinceLastPumpToggle = now - pumpPowerRelay.getLastToggleTimestamp();
+    const unsigned long timeSinceLastPumpToggle = now - pumpPowerRelay.getLastToggleTimestamp();
 
-    // if the water is flowing and the temp difference is too large and the pump is not currently running and it has not been recently running
-    if (flowSensor.isFlowing() && tempDiff >= MAX_TEMP_DIFF && !pumpPowerRelay.isOn() && timeSinceLastPumpToggle >= MIN_PUMP_OFF_DURATION) {
+    if (
+      flowSensor.isFlowing() &&                                 // if the water is flowing AND
+      tempDiff >= MAX_TEMP_DIFF &&                              // the temperature difference is too large AND
+      !pumpPowerRelay.isOn() &&                                 // the pump is not already on AND
+      timeSinceLastPumpToggle >= MIN_PUMP_OFF_DURATION          // the pump has not run too recently
+      ) {
       pumpPowerRelay.on(); 
-    } 
-    // if the pump is currently on and it has either been running too long or the temp difference is small and the pump has been running long enough
-    else if (pumpPowerRelay.isOn() && (timeSinceLastPumpToggle >= MAX_PUMP_ON_DURATION || (tempDiff <= MIN_TEMP_DIFF && timeSinceLastPumpToggle >= MIN_PUMP_ON_DURATION))) {
+    } else if (
+      pumpPowerRelay.isOn() &&                                  // if the pump is currently on AND
+      (
+        timeSinceLastPumpToggle >= MAX_PUMP_ON_DURATION ||      // it has either been running too long OR
+        (
+          tempDiff <= MIN_TEMP_DIFF &&                          // we have already reached the required temperature AND
+          (
+            timeSinceLastPumpToggle >= MIN_PUMP_ON_DURATION ||  // the pump has either been running long enough OR
+            flowSensor.isFlowing()                              // the water is flowing
+          )
+        )
+      )) {
       pumpPowerRelay.off();
       // record how many times we timed out before we reached the temperature target
       if (timeSinceLastPumpToggle >= MAX_PUMP_ON_DURATION) {
@@ -85,9 +99,14 @@ void loop() {
       }
     }
 
+    // if the water if flowing and it's warm enough
+    if (flowSensor.isFlowing() && tempDiff <= MIN_TEMP_DIFF) {
+      totalWarmPulses += pulses;
+    }
+
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0,0);
+    display.setCursor(0, 0);
     display.setTextSize(1);
 
     display.print("O:");
@@ -106,28 +125,31 @@ void loop() {
     display.print(returnTemperatureSensor.getMaxTemperature());
     display.println(" C");
 
-    display.print("LP:");
+    display.print("F:");
+    display.print(flowSensor.isFlowing() ? "yes" : "no");
+    display.print(' ');
     display.print(pulses);
-    display.print(" LFR:");
+    display.print("p ");
     display.print(flowSensor.pulsesToGallons(pulses * (60000.0f / float(timeSinceLastReading))));
+    display.print("gpm");
     display.println();
 
-    display.print("CFT:");
+    display.print("Fc:");
+    display.print(flowSensor.getCurrentFlowPulses());
+    display.print("p ");
     display.print(flowSensor.getCurrentFlowTimeMillis() / 60000);
-    display.print(" CFG:");
+    display.print("m ");
     display.print(flowSensor.pulsesToGallons(flowSensor.getCurrentFlowPulses()));
+    display.print('g');
     display.println();
 
-    display.print("TSFC:");
-    display.print(flowSensor.getTotalSignificantFlowCount());
-    display.print(" TFC:");
+    display.print("Ft:");
     display.print(flowSensor.getTotalFlowCount());
-    display.println();
-
-    display.print("TFT:");
+    display.print("c ");
     display.print(flowSensor.getTotalFlowMillis() / 60000);
-    display.print(" TFG:");
+    display.print("m ");
     display.print(flowSensor.pulsesToGallons(flowSensor.getTotalFlowPulses()));
+    display.print('g');
     display.println();
 
     display.print("P:");
@@ -136,14 +158,25 @@ void loop() {
     display.print(timeSinceLastPumpToggle / 1000);
     display.print("s ");
     display.print(tempDiff);
-    display.println("C");
+    display.print('C');
+    display.println();
 
-    display.print("PC:");
+    display.print("Pt:");
     display.print(pumpPowerRelay.getTotalOnCount());
-    display.print(" PD:");
+    display.print("c ");
     display.print(pumpPowerRelay.getTotalOnDuration() / 60000);
-    display.print(" PT:");
+    display.print("m ");
+    display.print(pumpPowerRelay.getTotalOnDuration() * 100.00f / now);
+    display.print('%');
+    display.println();
+    
+    display.print("Ps:");
+    display.print(pumpPowerRelay.getTotalOnCount() == 0? 0 : pumpPowerRelay.getTotalOnDuration() / 60000 / float(pumpPowerRelay.getTotalOnCount()));
+    display.print("m~ ");
     display.print(missedTempTargetCount);
+    display.print("c ");
+    display.print(flowSensor.getTotalFlowPulses() == 0? 0 : totalWarmPulses * 100.00f / flowSensor.getTotalFlowPulses());
+    display.print('%');
 
     display.display();
   }
