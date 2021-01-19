@@ -10,6 +10,8 @@ class FlowSensor {
   private:
     byte pin;
     volatile byte pulses = 0;
+    byte lastPulses = 0;
+    unsigned long lastPeriodMillis = 0;
     boolean currentFlowDetected = false;
     unsigned long currentFlowPulses = 0; // gets reset any time the flow stops
     unsigned long currentFlowTimeMillis = 0; // gets reset any time the flow stops
@@ -29,22 +31,21 @@ class FlowSensor {
     /**
      * Setup initializer.
      */
-    void begin();
+    void begin(void (*isr)(void));
 
     /**
      * To be called by an interrupt handler routine whenever this sensor is FALLING.
      */
-    void onPulse();
+    void isr();
 
     /**
-     * Call to service this sensor. This method needs to be invoked periodically in order for the sensor to work accurately.
+     * Call to read this sensor. This method needs to be invoked periodically in order for the sensor to work accurately.
      * At 1HZ, this sensor will be able to support flows up to ~11 gpm.
      * 
-     * @param  period time in millis since the this sensor was last serviced.
-     * @return the number of pulses detected during this period, possibly zero. 
-     *         This number may include sensor noise, so values > 0 do not reliably indicate if the flow has been detected.
+     * @param  period time in millis since the this sensor was last read.
+     * @return true if a flow is detected at this sensor and false otherwise.
      */
-    byte service(unsigned long period);
+    boolean read(unsigned long period);
 
     /**
      * Check if this sensor is flowing. Only significant flow is reported (>= 1s) in order to ignore sensor noise.
@@ -52,6 +53,17 @@ class FlowSensor {
      * @return true if a flow is detected at this sensor and false otherwise.
      */
     boolean isFlowing();
+
+    /**
+     * Get the number of pulses since the last time this sensor was read.
+     * This number may include sensor noise, so values > 0 do not reliably indicate if the flow has been detected.
+     * 
+     * @return the number of pulses since the last time this sensor was read.
+     */
+    byte getLastPulses();
+
+
+    float getLastGpm();
 
     /**
      * Get the number of pulses since the last detected flow started.

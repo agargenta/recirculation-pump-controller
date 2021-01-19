@@ -4,21 +4,22 @@ FlowSensor::FlowSensor(byte pin) {
   this->pin = pin;
 }
 
-void FlowSensor::begin() {
+void FlowSensor::begin(void (*isr)(void)) {
   pinMode(pin, INPUT);
   digitalWrite(pin, HIGH);
+  attachInterrupt(digitalPinToInterrupt(pin), isr, FALLING);
 }
 
-void FlowSensor::onPulse() {
+void FlowSensor::isr() {
   pulses++;
 }
 
-byte FlowSensor::service(unsigned long period) {
-  byte lastPulses; 
+boolean FlowSensor::read(unsigned long period) {
   noInterrupts();
   lastPulses = pulses;
   pulses = 0;
   interrupts();
+  lastPeriodMillis = period;
   if (lastPulses > 0) {
     currentFlowPulses += lastPulses;
     currentFlowTimeMillis += period;
@@ -41,7 +42,15 @@ byte FlowSensor::service(unsigned long period) {
     currentFlowTimeMillis = 0;
     currentFlowDetected = false;
   }
+  return currentFlowDetected;
+}
+
+byte FlowSensor::getLastPulses() {
   return lastPulses;
+}
+
+float FlowSensor::getLastGpm() {
+  return lastPulses == 0 || lastPeriodMillis == 0? 0.0 : pulsesToGallons(lastPulses * (60000.0f / float(lastPeriodMillis)));
 }
 
 boolean FlowSensor::isFlowing() {
