@@ -18,9 +18,9 @@
 #define OLED_SCREEN_WIDTH              128
 #define OLED_SCREEN_HEIGHT              32
 #define OLED_RESET                       4
-#define OLED_TIMEOUT                 60000 //  1 minute
-#define MAX_TEMP_DIFF                    6
-#define MIN_TEMP_DIFF                    3
+#define OLED_TIMEOUT                300000 //  5 minutes
+#define MAX_TEMP_DIFF                    6 //  (Celsius)
+#define MIN_TEMP_DIFF                    3 //  (Celsius)
 #define MIN_PUMP_OFF_DURATION       180000 //  3 minutes
 #define MIN_PUMP_ON_DURATION        300000 //  5 minutes
 #define MAX_PUMP_ON_DURATION        600000 // 10 minutes
@@ -45,7 +45,7 @@ void buttonIsr() {
   button.isr();
 }
 
-void displayPumpStatus()                { if (pumpPowerRelay.isOn()) { displaySeconds(millis() - pumpPowerRelay.getLastToggleTimestamp()); } else { display.print("off"); } }
+void displayPumpLastChange()            { displaySeconds(millis() - pumpPowerRelay.getLastToggleTimestamp()); }
 void displayPumpTotalOnCount()          { display.print(pumpPowerRelay.getTotalOnCount()); }
 void displayPumpTotalOnTime()           { displayMinutes(pumpPowerRelay.getTotalOnDuration()); }
 void displayPumpTotalOnTimeRatio()      { displayPercentage(float(pumpPowerRelay.getTotalOnDuration()) / millis()); };
@@ -67,8 +67,8 @@ void displayTotalFlowVolume()           { displayGallons(flowSensor.getTotalFlow
 void displayWarmFlowRatio()             { displayPercentage(flowSensor.getTotalFlowPulses() == 0? 0 : totalWarmPulses / float(flowSensor.getTotalFlowPulses())); }
 
 MenuItem menuItems[] = {
-  {"Smart Recirculation\nPump Controller\nv1.1.0", "tinyurl.com/smartrpc", NULL},
-  {"Pump Status", "on-time", displayPumpStatus},
+  {"Smart Recirculation\nPump Controller\nv1.1.2", "tinyurl.com/smartrpc", NULL},
+  {"Pump Status", pumpPowerRelay.isOn()? "ON" : "OFF", displayPumpLastChange},
   {"Pump Total", "count", displayPumpTotalOnCount},
   {"Pump Total", "on-time", displayPumpTotalOnTime},
   {"Pump Total", "on-time ratio", displayPumpTotalOnTimeRatio},
@@ -168,8 +168,10 @@ void loop() {
   }
   
   button.read();
-  menu.show();
-  turnOffDisplayOnInactivity();
+  if (displayOn) {
+    menu.show();
+    turnOffDisplayOnInactivity();
+  }
 }
 
 void onButtonPressed() {
