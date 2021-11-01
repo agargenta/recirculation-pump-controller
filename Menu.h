@@ -7,7 +7,7 @@
 typedef struct {
   const char *header1;
   const char *header2;
-  const void (*displayValueFn)(void);
+  void (*displayValueFn)(void);
 } MenuItem;
 
 class Menu {
